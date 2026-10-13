@@ -66,6 +66,50 @@ function hideError() {
   errorBox.style.display = 'none';
 }
 
+// ── Consulta com fallback entre APIs públicas ────────────────
+const FETCH_TIMEOUT_MS = 10000;
+
+// Converte a resposta do CNPJ.ws para o formato da BrasilAPI (usado por renderResult)
+function normalizarCnpjWs(d) {
+  const est = d.estabelecimento || {};
+  const ativ = est.atividade_principal || {};
+  return {
+    cnpj: est.cnpj,
+    razao_social: d.razao_social,
+    descricao_situacao_cadastral: est.situacao_cadastral,
+    opcao_pelo_simples: !!(d.simples && String(d.simples.simples).toLowerCase() === 'sim'),
+    cnae_fiscal: ativ.id,
+    cnae_fiscal_descricao: ativ.descricao,
+    cnaes_secundarios: (est.atividades_secundarias || []).map((a) => ({ codigo: a.id, descricao: a.descricao })),
+  };
+}
+
+const FONTES_CNPJ = [
+  { nome: 'BrasilAPI', url: (c) => `https://brasilapi.com.br/api/cnpj/v1/${c}`, normalizar: (d) => d },
+  { nome: 'Minha Receita', url: (c) => `https://minhareceita.org/${c}`, normalizar: (d) => d },
+  { nome: 'CNPJ.ws', url: (c) => `https://publica.cnpj.ws/cnpj/${c}`, normalizar: normalizarCnpjWs },
+];
+
+async function buscarCnpj(cnpj) {
+  let naoEncontrado = false;
+  for (const fonte of FONTES_CNPJ) {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), FETCH_TIMEOUT_MS);
+    try {
+      const resp = await fetch(fonte.url(cnpj), { signal: ctrl.signal });
+      if (resp.status === 404) { naoEncontrado = true; continue; }
+      if (!resp.ok) { console.warn(`${fonte.nome}: HTTP ${resp.status}`); continue; }
+      return fonte.normalizar(await resp.json());
+    } catch (err) {
+      console.warn(`${fonte.nome}: ${err.name === 'AbortError' ? 'timeout' : err.message}`);
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+  if (naoEncontrado) throw new Error('CNPJ não encontrado na Receita Federal.');
+  throw new Error('Os serviços de consulta de CNPJ estão indisponíveis no momento. Tente novamente em alguns minutos.');
+}
+
 async function consultar() {
   const cnpj = onlyDigits(cnpjInput.value);
   hideError();
@@ -80,12 +124,7 @@ async function consultar() {
   btn.disabled = true;
 
   try {
-    const resp = await fetch(`https://brasilapi.com.br/api/cnpj/v1/${cnpj}`);
-    if (!resp.ok) {
-      if (resp.status === 404) throw new Error('CNPJ não encontrado na Receita Federal.');
-      throw new Error('Falha ao consultar o CNPJ (tente novamente em instantes).');
-    }
-    const data = await resp.json();
+    const data = await buscarCnpj(cnpj);
     renderResult(data);
   } catch (err) {
     showError(err.message || 'Erro ao consultar o CNPJ.');
