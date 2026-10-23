@@ -134,7 +134,11 @@ async function consultar() {
   }
 }
 
+// Dados da última consulta — usados para gerar o PDF.
+let ultimaConsulta = null;
+
 function renderResult(data) {
+  ultimaConsulta = data;
   const isSimples = data.opcao_pelo_simples === true;
   const cnaePrincipal = data.cnae_fiscal ? String(data.cnae_fiscal) : null;
   const cnaeDescApi = data.cnae_fiscal_descricao || '';
@@ -147,7 +151,10 @@ function renderResult(data) {
   html += `<div class="ficha-header">
     <div class="ficha-empresa-row">
       <h2 class="ficha-nome">${escapeHtml(data.razao_social || '-')}</h2>
-      <span class="status-badge ${isAtiva ? 'badge-green' : 'badge-gray'}">● ${escapeHtml(situacao)}</span>
+      <div class="ficha-acoes">
+        <span class="status-badge ${isAtiva ? 'badge-green' : 'badge-gray'}">● ${escapeHtml(situacao)}</span>
+        <button type="button" class="btn-pdf" id="btnPdf">Gerar PDF</button>
+      </div>
     </div>
     <div class="ficha-meta">
       <div class="ficha-meta-item">
@@ -172,6 +179,7 @@ function renderResult(data) {
     </div>`;
     resultCard.innerHTML = html;
     resultCard.style.display = 'block';
+    document.getElementById('btnPdf').addEventListener('click', gerarPdf);
     return;
   }
 
@@ -256,6 +264,7 @@ function renderResult(data) {
 
   resultCard.innerHTML = html;
   resultCard.style.display = 'block';
+  document.getElementById('btnPdf').addEventListener('click', gerarPdf);
   if (opcoes.length > 0) {
     const inicial = match ? normalizeCnae(match.cnae) : (opcoes.find((o) => o.naTabela) || {}).codigo || '';
     setupCnaeSelect(inicial);
@@ -338,6 +347,150 @@ function recalcNota(aliquotaIr) {
   calcIr.textContent = formatMoeda(ir);
   calcLiquido.textContent = formatMoeda(liquido);
   calcBox.style.display = 'block';
+}
+
+// ── PDF da consulta ──────────────────────────────────────────
+function formatPct(num) {
+  return `${Number(num).toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 4 })}%`;
+}
+
+function gerarPdf() {
+  const data = ultimaConsulta;
+  if (!data) return;
+  if (!window.jspdf) {
+    alert('Não foi possível carregar o gerador de PDF. Verifique sua conexão e tente novamente.');
+    return;
+  }
+
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+  const pageW = doc.internal.pageSize.getWidth();
+  const pageH = doc.internal.pageSize.getHeight();
+  const margem = 18;
+  const larguraUtil = pageW - margem * 2;
+  const azul = [30, 78, 140];
+  const cinza = [107, 114, 128];
+  const texto = [31, 41, 55];
+  let y = 0;
+
+  function garantirEspaco(altura) {
+    if (y + altura > pageH - 20) { doc.addPage(); y = margem; }
+  }
+
+  function tituloSecao(t) {
+    garantirEspaco(14);
+    y += 4;
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setTextColor(...azul);
+    doc.text(t.toUpperCase(), margem, y);
+    y += 2;
+    doc.setDrawColor(226, 229, 233); doc.line(margem, y, pageW - margem, y);
+    y += 6;
+  }
+
+  function campo(rotulo, valor) {
+    const linhas = doc.splitTextToSize(String(valor || '-'), larguraUtil - 50);
+    garantirEspaco(linhas.length * 5 + 2);
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(...cinza);
+    doc.text(rotulo, margem, y);
+    doc.setFontSize(10); doc.setTextColor(...texto);
+    doc.text(linhas, margem + 50, y);
+    y += linhas.length * 5 + 2;
+  }
+
+  function linhaValor(rotulo, valor, opts = {}) {
+    garantirEspaco(9);
+    if (opts.destaque) {
+      doc.setFillColor(240, 243, 247);
+      doc.rect(margem, y - 5, larguraUtil, 8, 'F');
+    }
+    doc.setFont('helvetica', opts.destaque ? 'bold' : 'normal'); doc.setFontSize(10);
+    doc.setTextColor(...texto);
+    doc.text(rotulo, margem + 2, y);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(...(opts.cor || texto));
+    doc.text(valor, pageW - margem - 2, y, { align: 'right' });
+    doc.setDrawColor(226, 229, 233); doc.line(margem, y + 3, pageW - margem, y + 3);
+    y += 8;
+  }
+
+  // Cabeçalho
+  doc.setFillColor(...azul);
+  doc.rect(0, 0, pageW, 22, 'F');
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(14); doc.setTextColor(255, 255, 255);
+  doc.text('IR Retido em Notas Fiscais', margem, 14);
+  const agora = new Date();
+  const emissao = `${agora.toLocaleDateString('pt-BR')} ${agora.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`;
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(9);
+  doc.text(`Consulta realizada em ${emissao}`, pageW - margem, 14, { align: 'right' });
+  y = 32;
+
+  // Empresa
+  const cnpjFmt = formatCnpj(onlyDigits(data.cnpj || ''));
+  const isSimples = data.opcao_pelo_simples === true;
+  tituloSecao('Dados da empresa');
+  campo('Razão social', data.razao_social);
+  campo('CNPJ', cnpjFmt);
+  campo('Situação cadastral', data.descricao_situacao_cadastral);
+  campo('Regime tributário', isSimples ? 'Optante pelo Simples Nacional' : 'Não optante pelo Simples Nacional');
+
+  const valorNota = parseMoeda(document.getElementById('valorNotaInicial').value);
+  const temValor = valorNota > 0 && !isNaN(valorNota);
+
+  if (isSimples) {
+    tituloSecao('Retenção de IR');
+    const aviso = doc.splitTextToSize(
+      'Simples Nacional: a tributação segue o regime unificado do Simples. Não se aplica a tabela de retenção de IR por CNAE.',
+      larguraUtil);
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.setTextColor(...texto);
+    doc.text(aviso, margem, y);
+    y += aviso.length * 5 + 2;
+    if (temValor) linhaValor('Valor da nota', formatMoeda(valorNota));
+  } else {
+    const select = document.getElementById('cnaeSelect');
+    const row = select ? CNAE_INDEX[select.value] : null;
+
+    tituloSecao('Atividade econômica');
+    if (row) {
+      campo('CNAE da nota', `${formatCnae(row.cnae)} - ${row.descricao}`);
+      campo('Natureza do bem/serviço', row.natureza);
+    } else {
+      campo('CNAE da nota', 'Nenhum CNAE deste CNPJ consta na tabela de referência de IR.');
+    }
+
+    tituloSecao('Retenção de IR');
+    if (row) {
+      const aliquota = Number(row.aliquota_ir);
+      if (temValor) {
+        const ir = valorNota * (aliquota / 100);
+        linhaValor('Valor da nota', formatMoeda(valorNota));
+        linhaValor('Alíquota de IR', formatPct(aliquota));
+        linhaValor(`IR retido (${formatPct(aliquota)})`, formatMoeda(ir), { cor: [192, 57, 43] });
+        linhaValor('Valor líquido', formatMoeda(valorNota - ir), { destaque: true, cor: [22, 131, 91] });
+      } else {
+        linhaValor('Alíquota de IR', formatPct(aliquota));
+        doc.setFont('helvetica', 'italic'); doc.setFontSize(9); doc.setTextColor(...cinza);
+        doc.text('Valor da nota não informado.', margem, y + 1);
+        y += 6;
+      }
+    } else {
+      campo('Alíquota de IR', 'Não aplicável');
+    }
+  }
+
+  // Rodapé em todas as páginas
+  const fonte = doc.splitTextToSize(
+    'Fonte: dados cadastrais da Receita Federal do Brasil (via BrasilAPI / Minha Receita / CNPJ.ws). ' +
+    'Alíquota de IR conforme a tabela de parâmetros por CNAE. Esta tabela não representa o ISS municipal.',
+    larguraUtil);
+  const totalPaginas = doc.getNumberOfPages();
+  for (let i = 1; i <= totalPaginas; i++) {
+    doc.setPage(i);
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5); doc.setTextColor(...cinza);
+    doc.text(fonte, margem, pageH - 14);
+    doc.text(`Página ${i} de ${totalPaginas}`, pageW - margem, pageH - 6, { align: 'right' });
+  }
+
+  doc.save(`IR-retido-${onlyDigits(data.cnpj || '') || 'consulta'}.pdf`);
 }
 
 function formatCnae(code) {
