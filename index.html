@@ -182,6 +182,29 @@ body {
 #btnConsultar:hover:not(:disabled) { background: var(--primary-dark); }
 #btnConsultar:disabled { opacity: .5; cursor: not-allowed; }
 
+.btn-pdf {
+  padding: 5px 12px;
+  background: var(--surface);
+  color: var(--primary);
+  border: 1px solid var(--primary);
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background .15s;
+}
+
+.btn-pdf:hover { background: var(--primary-light); }
+
+.ficha-acoes {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
 /* ─── Loading & Error ────────────────────────────────────────── */
 .loading-msg {
   margin-top: 14px;
@@ -576,6 +599,7 @@ body {
   aplicar(salvo === 'dark' ? 'dark' : 'light');
 })();
 </script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="cnae-data.js"></script>
 <script src="app.js"></script>
 </body>
