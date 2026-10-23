@@ -354,6 +354,16 @@ function formatPct(num) {
   return `${Number(num).toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 4 })}%`;
 }
 
+// Nome do arquivo = razão social, sem acentos e sem caracteres inválidos em nomes de arquivo.
+function nomeArquivoPdf(data) {
+  const nome = String(data.razao_social || '')
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[\\/:*?"<>|.]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return nome || onlyDigits(data.cnpj || '') || 'consulta';
+}
+
 function gerarPdf() {
   const data = ultimaConsulta;
   if (!data) return;
@@ -490,7 +500,7 @@ function gerarPdf() {
     doc.text(`Página ${i} de ${totalPaginas}`, pageW - margem, pageH - 6, { align: 'right' });
   }
 
-  doc.save(`IR-retido-${onlyDigits(data.cnpj || '') || 'consulta'}.pdf`);
+  doc.save(`${nomeArquivoPdf(data)}.pdf`);
 }
 
 function formatCnae(code) {
