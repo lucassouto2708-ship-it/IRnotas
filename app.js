@@ -110,6 +110,43 @@ async function buscarCnpj(cnpj) {
   throw new Error('Os serviços de consulta de CNPJ estão indisponíveis no momento. Tente novamente em alguns minutos.');
 }
 
+// A BrasilAPI e a Minha Receita usam a base mensal de dados abertos da Receita,
+// cujo arquivo do Simples costuma ficar desatualizado (ex.: opção e exclusão na
+// mesma data, sem registrar uma nova opção). Por isso a situação no Simples é
+// conferida em fontes que consultam o Simples Nacional diretamente.
+const FONTES_SIMPLES = [
+  {
+    nome: 'CNPJá',
+    url: (c) => `https://open.cnpja.com/office/${c}`,
+    extrair: (d) => (d.company && d.company.simples && typeof d.company.simples.optant === 'boolean')
+      ? d.company.simples.optant : null,
+  },
+  {
+    nome: 'CNPJ.ws',
+    url: (c) => `https://publica.cnpj.ws/cnpj/${c}`,
+    extrair: (d) => (d.simples && d.simples.simples)
+      ? String(d.simples.simples).toLowerCase() === 'sim' : (d.razao_social ? false : null),
+  },
+];
+
+async function verificarSimples(cnpj) {
+  for (const fonte of FONTES_SIMPLES) {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), FETCH_TIMEOUT_MS);
+    try {
+      const resp = await fetch(fonte.url(cnpj), { signal: ctrl.signal });
+      if (!resp.ok) { console.warn(`${fonte.nome} (Simples): HTTP ${resp.status}`); continue; }
+      const v = fonte.extrair(await resp.json());
+      if (typeof v === 'boolean') return v;
+    } catch (err) {
+      console.warn(`${fonte.nome} (Simples): ${err.name === 'AbortError' ? 'timeout' : err.message}`);
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+  return null;
+}
+
 async function consultar() {
   const cnpj = onlyDigits(cnpjInput.value);
   hideError();
@@ -124,7 +161,8 @@ async function consultar() {
   btn.disabled = true;
 
   try {
-    const data = await buscarCnpj(cnpj);
+    const [data, simples] = await Promise.all([buscarCnpj(cnpj), verificarSimples(cnpj)]);
+    if (typeof simples === 'boolean') data.opcao_pelo_simples = simples;
     renderResult(data);
   } catch (err) {
     showError(err.message || 'Erro ao consultar o CNPJ.');
