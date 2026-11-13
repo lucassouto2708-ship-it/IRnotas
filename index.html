@@ -12,6 +12,7 @@
 
 /* ─── Tokens ─────────────────────────────────────────────────── */
 :root {
+  color-scheme: light dark; /* controles nativos (select, scrollbar) seguem o tema */
   --bg:            #F5F6F8;
   --surface:       #FFFFFF;
   --surface-alt:   #F0F3F7;
@@ -476,6 +477,7 @@ body {
 
 /* ─── Dark mode ──────────────────────────────────────────────── */
 [data-theme="dark"] {
+  color-scheme: dark;
   --bg:            #0F1117;
   --surface:       #1A1D27;
   --surface-alt:   #13151E;
@@ -493,6 +495,7 @@ body {
   --red-bg:        #2A1012;
 }
 
+[data-theme="light"] { color-scheme: light; }
 [data-theme="dark"] .site-header { background: #111827; border-bottom-color: #1E293B; }
 [data-theme="dark"] .fiscal-table tr.row-total td { background: var(--surface-alt); }
 [data-theme="dark"] .badge-green { border-color: #1A4A35; }
@@ -549,18 +552,18 @@ body {
       <div class="form-grid">
         <div class="form-group">
           <label for="cnpj">CNPJ</label>
-          <input type="text" id="cnpj" placeholder="00.000.000/0000-00" maxlength="18">
+          <input type="text" id="cnpj" inputmode="numeric" autocomplete="off" placeholder="00.000.000/0000-00" maxlength="18">
         </div>
         <div class="form-group">
           <label for="valorNotaInicial">Valor da nota</label>
-          <input type="text" id="valorNotaInicial" placeholder="R$ 0,00">
+          <input type="text" id="valorNotaInicial" inputmode="decimal" autocomplete="off" placeholder="R$ 0,00">
         </div>
       </div>
       <div class="form-actions">
         <button id="btnConsultar">Consultar</button>
       </div>
-      <div id="loading" class="loading-msg" style="display:none;">Consultando dados da Receita Federal...</div>
-      <div id="errorBox" class="error-msg" style="display:none;"></div>
+      <div id="loading" class="loading-msg" role="status" aria-live="polite" style="display:none;">Consultando dados da Receita Federal...</div>
+      <div id="errorBox" class="error-msg" role="alert" style="display:none;"></div>
     </div>
   </div>
 

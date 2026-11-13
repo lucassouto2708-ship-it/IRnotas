@@ -511,5 +511,6 @@ function formatCnae(code) {
 function escapeHtml(str) {
   const div = document.createElement('div');
   div.textContent = str;
-  return div.innerHTML;
+  // innerHTML não escapa aspas: sem isso, um valor com " quebraria atributos
+  return div.innerHTML.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
