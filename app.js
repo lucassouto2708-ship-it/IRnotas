@@ -312,6 +312,19 @@ function setupCnaeSelect(initialCode) {
   updateAliquota();
 }
 
+// Separador de milhar enquanto digita: 1000 -> 1.000, 10000 -> 10.000 (vírgula e centavos ficam como estão).
+function formatarMilhar(valor) {
+  const limpo = String(valor).replace(/[^\d,]/g, '');
+  const [inteiro, ...resto] = limpo.split(',');
+  const decimal = resto.join('').slice(0, 2);
+  const inteiroFmt = inteiro.replace(/^0+(?=\d)/, '').replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+  return limpo.includes(',') ? `${inteiroFmt},${decimal}` : inteiroFmt;
+}
+
+document.getElementById('valorNotaInicial').addEventListener('input', (e) => {
+  e.target.value = formatarMilhar(e.target.value);
+});
+
 // Listener único (não é recriado a cada consulta) — sempre recalcula com a alíquota atual.
 document.getElementById('valorNotaInicial').addEventListener('input', () => recalcNota(aliquotaAtual));
 
